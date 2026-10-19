@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>@scii</title>
+
+<style>
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: #ffffff;
+    font-family: Arial, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .container {
+    width: 95%;
+    max-width: 1200px;
+    text-align: center;
+  }
+
+  canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+    background-color: #ffffff;
+  }
+
+  .controls {
+    margin-top: 30px;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  input, button {
+    padding: 12px 18px;
+    border: 1px solid #111;
+    font-size: 14px;
+    background: white;
+    color: black;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:hover {
+    background: black;
+    color: white;
+  }
+
+  .color-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: bold;
+  }
+
+  input[type="color"] {
+    width: 38px;
+    height: 38px;
+    padding: 2px;
+    border: 1px solid #111;
+    cursor: pointer;
+  }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <canvas id="asciiCanvas"></canvas>
+
+  <div class="controls">
+
+    <input
+      type="text"
+      id="textInput"
+      value="HELLO"
+      placeholder=""
+    >
+
+    <label class="color-control">
+      BACKGROUND
+      <input
+        type="color"
+        id="bgColor"
+        value="#ffffff"
+      >
+    </label>
+
+    <label class="color-control">
+      TEXT
+      <input
+        type="color"
+        id="textColor"
+        value="#000000"
+      >
+    </label>
+
+    <label class="color-control">
+      PIXEL
+      <input
+        type="color"
+        id="pixelColor"
+        value="#000000"
+      >
+    </label>
+
+    <button onclick="generateASCII()">
+      RANDOMIZE
+    </button>
+
+    <button onclick="downloadPNG()">
+      DOWNLOAD
+    </button>
+
+  </div>
+
+</div>
+
+<script>
+
+// =====================================
+// 1. 기본 설정
+// =====================================
+
+const canvas = document.getElementById("asciiCanvas");
+const ctx = canvas.getContext("2d");
+
+const input = document.getElementById("textInput");
+
+const bgColorInput = document.getElementById("bgColor");
+const textColorInput = document.getElementById("textColor");
+const pixelColorInput = document.getElementById("pixelColor");
+
+const characters = "01";
+
+const config = {
+  width: 1200,
+  height: 450,
+
+  // ASCII 셀 크기
+  cellSize: 8,
+
+  // 랜덤 픽셀 비율
+  invertProbability: 0.3,
+
+  // 원본 글자 크기
+  fontSize: 300,
+
+  // 원본 글자 두께
+  fontWeight: 900,
+
+  // 원본 글자 자간
+  letterSpacing: "-20px"
+};
+
+
+// =====================================
+// 2. ASCII 패턴 저장
+// =====================================
+
+let asciiPattern = [];
+
+function randomCharacter() {
+  return characters[
+    Math.floor(Math.random() * characters.length)
+  ];
+}
+
+
+// =====================================
+// 3. ASCII 패턴 생성
+// =====================================
+
+function generateASCII() {
+
+  const {
+    width,
+    height,
+    cellSize,
+    invertProbability,
+    fontSize,
+    fontWeight,
+    letterSpacing
+  } = config;
+
+  asciiPattern = [];
+
+  const maskCanvas = document.createElement("canvas");
+
+  maskCanvas.width = width;
+  maskCanvas.height = height;
+
+  const maskCtx = maskCanvas.getContext("2d");
+
+  maskCtx.fillStyle = "black";
+  maskCtx.textAlign = "center";
+  maskCtx.textBaseline = "middle";
+  maskCtx.letterSpacing = letterSpacing;
+
+  let size = fontSize;
+
+  // 텍스트 크기 자동 조절
+  do {
+    maskCtx.font =
+      `${fontWeight} ${size}px Arial, sans-serif`;
+
+    if (
+      maskCtx.measureText(input.value).width
+      < width - 60
+    ) {
+      break;
+    }
+
+    size -= 5;
+
+  } while (size > 20);
+
+  maskCtx.fillText(
+    input.value,
+    width / 2,
+    height / 2
+  );
+
+  const pixels = maskCtx.getImageData(
+    0, 0, width, height
+  ).data;
+
+  // ASCII 패턴 생성
+  for (let y = 0; y < height; y += cellSize) {
+    for (let x = 0; x < width; x += cellSize) {
+
+      const px = Math.min(
+        Math.floor(x + cellSize / 2),
+        width - 1
+      );
+
+      const py = Math.min(
+        Math.floor(y + cellSize / 2),
+        height - 1
+      );
+
+      const index = (py * width + px) * 4;
+      const alpha = pixels[index + 3];
+
+      if (alpha > 128) {
+
+        asciiPattern.push({
+          x: x,
+          y: y,
+          char: randomCharacter(),
+          inverted: Math.random() < invertProbability
+        });
+
+      }
+    }
+  }
+
+  renderASCII();
+}
+
+
+// =====================================
+// 4. ASCII 렌더링
+// =====================================
+
+function renderASCII() {
+
+  const {
+    width,
+    height,
+    cellSize
+  } = config;
+
+  const bgColor = bgColorInput.value;
+  const textColor = textColorInput.value;
+  const pixelColor = pixelColorInput.value;
+
+  // 화면 배경색
+  document.body.style.backgroundColor = bgColor;
+  canvas.style.backgroundColor = bgColor;
+
+  // Retina 대응
+  const dpr = window.devicePixelRatio || 1;
+
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
+
+  canvas.style.width = "100%";
+  canvas.style.aspectRatio = `${width} / ${height}`;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // 투명 Canvas 유지
+  ctx.clearRect(0, 0, width, height);
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  // ASCII 문자 폰트
+  ctx.font = `${cellSize * 0.95}px monospace`;
+
+  asciiPattern.forEach(item => {
+
+    const {
+      x,
+      y,
+      char,
+      inverted
+    } = item;
+
+    if (inverted) {
+
+      // 랜덤 픽셀 배경: COLOR 02
+      ctx.fillStyle = pixelColor;
+
+      ctx.fillRect(
+        x,
+        y,
+        cellSize,
+        cellSize
+      );
+
+    }
+
+    // 모든 ASCII 문자: COLOR 01
+    ctx.fillStyle = textColor;
+
+    ctx.fillText(
+      char,
+      x + cellSize / 2,
+      y + cellSize / 2
+    );
+
+  });
+}
+
+
+// =====================================
+// 5. 이벤트
+// =====================================
+
+// 텍스트 변경 → 패턴 재생성
+input.addEventListener("input", generateASCII);
+
+// 색상 변경 → 패턴 유지
+bgColorInput.addEventListener("input", renderASCII);
+textColorInput.addEventListener("input", renderASCII);
+pixelColorInput.addEventListener("input", renderASCII);
+
+
+// =====================================
+// 6. 투명 PNG 다운로드
+// =====================================
+
+function downloadPNG() {
+
+  const link = document.createElement("a");
+
+  link.download = "ASCII-TYPOGRAPHY.png";
+  link.href = canvas.toDataURL("image/png");
+
+  link.click();
+}
+
+
+// =====================================
+// 7. 최초 실행
+// =====================================
+
+generateASCII();
+
+</script>
+
+</body>
+</html>
